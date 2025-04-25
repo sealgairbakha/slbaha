@@ -8,7 +8,7 @@ display = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("miki-rurk")
 clock = pygame.time.Clock()
 
-base_path = r"C:\Users\SystemX\Desktop\pp2\Lab7\task1"
+base_path = r"C:\Users\bjost\OneDrive\Документы\Baha\KBTU\PP2\lab1\lab7\task1"
 image_miki = pygame.image.load(os.path.join(base_path, "clock.png"))
 image_min = pygame.image.load(os.path.join(base_path, "min_hand.png"))
 image_sec = pygame.image.load(os.path.join(base_path, "sec_hand.png"))

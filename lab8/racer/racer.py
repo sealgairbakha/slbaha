@@ -1,93 +1,164 @@
 import pygame
+import random
+import sys
+import os
 
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((640, 480))
-    clock = pygame.time.Clock()
+pygame.init()
+pygame.mixer.init()
 
-    radius = 15
-    color = (0, 0, 255)
-    bg_color = (0, 0, 0)
-    points = []
+# получаем путь к текущей папке
+BASE_DIR = os.path.dirname(__file__)
 
-    tool = 'draw'  # чем рисуем: кисть, круг, прямоугольник, ластик
-    drawing_shape = False
-    shape_start = (0, 0)
-    shape_end = (0, 0)
+# экран
+WIDTH, HEIGHT = 600, 800
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("RACING")
+clock = pygame.time.Clock()
 
-    canvas = pygame.Surface((640, 480))  # "холст"
-    canvas.fill(bg_color)
+# картинки
+background = pygame.image.load(os.path.join(BASE_DIR, 'AnimatedStreet.png'))
+background = pygame.transform.scale(background, (WIDTH, HEIGHT))
 
-    while True:
-        for event in pygame.event.get():
-            # выход
-            if event.type == pygame.QUIT:
-                return
+player_img = pygame.image.load(os.path.join(BASE_DIR, 'Player.png'))
+player_img = pygame.transform.scale(player_img, (60, 80))
 
-            # выбор инструмента и цвета
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_1: tool = 'draw'
-                if event.key == pygame.K_2: tool = 'circle'
-                if event.key == pygame.K_3: tool = 'rect'
-                if event.key == pygame.K_e: tool = 'eraser'
-                if event.key == pygame.K_r: color = (255, 0, 0)
-                if event.key == pygame.K_g: color = (0, 255, 0)
-                if event.key == pygame.K_b: color = (0, 0, 255)
+enemy_img = pygame.image.load(os.path.join(BASE_DIR, 'Enemy.png'))
+enemy_img = pygame.transform.scale(enemy_img, (60, 80))
 
-            # мышку нажали
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    shape_start = event.pos
-                    drawing_shape = True
-                if event.button == 4: radius = min(200, radius + 1)  # колесо вверх
-                if event.button == 5: radius = max(1, radius - 1)   # колесо вниз
+coin_img = pygame.image.load(os.path.join(BASE_DIR, 'coin.png'))
+coin_img = pygame.transform.scale(coin_img, (40, 40))
 
-            # мышку отпустили
-            if event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1 and drawing_shape:
-                    shape_end = event.pos
-                    if tool in ['circle', 'rect']:
-                        draw_shape(canvas, tool, shape_start, shape_end, color if tool != 'eraser' else bg_color)
-                    drawing_shape = False
+# звук
+pygame.mixer.music.load(os.path.join(BASE_DIR, 'background.wav'))
+crash_sound = pygame.mixer.Sound(os.path.join(BASE_DIR, 'crash.wav'))
 
-        # рисуем кистью или ластиком
-        if pygame.mouse.get_pressed()[0] and tool in ['draw', 'eraser']:
-            pos = pygame.mouse.get_pos()
-            points.append((pos, tool, color if tool != 'eraser' else bg_color, radius))
-            points = points[-256:]  # ограничим список, чтобы не лагало
+# настройки
+player_speed = 7
+score = 0
+enemy_base_speed = 3
+speed_up_every = 5  # каждые 5 монет враги становятся быстрее
+font = pygame.font.SysFont("Arial", 30)
 
-        # показываем холст
-        screen.blit(canvas, (0, 0))
+class Player(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = player_img
+        self.rect = self.image.get_rect(center=(WIDTH // 2, HEIGHT - 80))
+        self.speed = player_speed
 
-        # рисуем всё, что нарисовали кистью
-        for pt, t, col, r in points:
-            pygame.draw.circle(screen, col, pt, r)
+    def update(self):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and self.rect.left > 0:
+            self.rect.x -= self.speed
+        if keys[pygame.K_RIGHT] and self.rect.right < WIDTH:
+            self.rect.x += self.speed
 
-        # если рисуем фигуру — показываем как она будет выглядеть
-        if drawing_shape and tool in ['circle', 'rect']:
-            shape_end = pygame.mouse.get_pos()
-            draw_shape(screen, tool, shape_start, shape_end, color if tool != 'eraser' else bg_color, preview=True)
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = enemy_img
+        self.rect = self.image.get_rect()
+        self.reset()
+        self.speed = random.randint(enemy_base_speed, enemy_base_speed + 3)
 
-        pygame.display.flip()
-        clock.tick(60)
+    def reset(self):
+        self.rect.x = random.randint(40, WIDTH - 100)
+        self.rect.y = random.randint(-600, -100)
 
-# рисуем фигуру
-def draw_shape(surface, tool, start, end, color, preview=False):
-    temp_surface = surface if not preview else surface.copy()
+    def update(self, enemy_group):
+        self.rect.y += self.speed
 
-    if tool == 'circle':
-        center = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
-        rx = abs(start[0] - end[0]) // 2
-        ry = abs(start[1] - end[1]) // 2
-        r = (rx + ry) // 2
-        pygame.draw.circle(temp_surface, color, center, r, 0 if not preview else 2)
+        # если враги сталкиваются, чуть раздвигаем
+        for enemy in enemy_group:
+            if enemy != self and self.rect.colliderect(enemy.rect):
+                if self.rect.x < enemy.rect.x:
+                    self.rect.x -= 5
+                else:
+                    self.rect.x += 5
+                break
 
-    elif tool == 'rect':
-        rect = pygame.Rect(min(start[0], end[0]), min(start[1], end[1]),
-                           abs(start[0] - end[0]), abs(start[1] - end[1]))
-        pygame.draw.rect(temp_surface, color, rect, 0 if not preview else 2)
+        if self.rect.top > HEIGHT:
+            self.reset()
+            self.speed = random.randint(enemy_base_speed, enemy_base_speed + 3)
 
-    if preview:
-        surface.blit(temp_surface, (0, 0))
+class Coin(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__()
+        self.image = coin_img
+        self.rect = self.image.get_rect()
+        self.reset()
 
-main()
+    def reset(self):
+        self.rect.x = random.randint(40, WIDTH - 80)
+        self.rect.y = random.randint(-600, -100)
+        self.weight = random.choice([1, 2, 3])  # монеты с разной ценностью
+
+    def update(self):
+        self.rect.y += 4
+        if self.rect.top > HEIGHT:
+            self.reset()
+
+# создаём игрока, врагов, монеты
+player = Player()
+enemies = pygame.sprite.Group()
+coins = pygame.sprite.Group()
+all_sprites = pygame.sprite.Group()
+all_sprites.add(player)
+
+for _ in range(7):
+    enemy = Enemy()
+    enemies.add(enemy)
+    all_sprites.add(enemy)
+
+for _ in range(2):
+    coin = Coin()
+    coins.add(coin)
+    all_sprites.add(coin)
+
+pygame.mixer.music.play(-1)
+
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    # обновление
+    player.update()
+    enemies.update(enemies)
+    coins.update()
+
+    # фон
+    screen.blit(background, (0, 0))
+
+    # отрисовка объектов
+    all_sprites.draw(screen)
+
+    # счёт
+    score_text = font.render(f"Coins: {score}", True, (0, 0, 0))
+    screen.blit(score_text, (WIDTH - 150, 10))
+
+    # столкновение с врагами — конец
+    if pygame.sprite.spritecollide(player, enemies, False):
+        crash_sound.play()
+        pygame.time.delay(2000)
+        running = False
+
+    # монеты собираем
+    for coin in pygame.sprite.spritecollide(player, coins, True):
+        score += coin.weight
+        new_coin = Coin()
+        coins.add(new_coin)
+        all_sprites.add(new_coin)
+
+        # ускорение врагов
+        if score % speed_up_every == 0:
+            enemy_base_speed += 1
+            for enemy in enemies:
+                enemy.speed += 1
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit()
